@@ -265,23 +265,22 @@ export default class MainScene extends Phaser.Scene {
         if (cards.pendingPlacement.kind === "road") {
           hintEl.textContent = "Place a road tile to start building a path from left to right";
         } else {
-          hintEl.textContent = "Tip: Build a path from left (spawn) to right (exit) first, then place towers";
+          hintEl.textContent =
+            "Tip: Build a path from left (spawn) to right (exit) first, then place towers";
         }
       } else {
         hintEl.textContent = "Select a road card and build a path from left to right";
       }
-    } else {
-      if (cards.pendingPlacement) {
-        if (cards.pendingPlacement.kind === "tower") {
-          hintEl.textContent = "Place a tower near the path to defend against enemies";
-        } else if (cards.pendingPlacement.kind === "terrain") {
-          hintEl.textContent = "Place terrain - hills unlock special tower upgrades";
-        } else {
-          hintEl.textContent = "Build more roads to extend your path";
-        }
+    } else if (cards.pendingPlacement) {
+      if (cards.pendingPlacement.kind === "tower") {
+        hintEl.textContent = "Place a tower near the path to defend against enemies";
+      } else if (cards.pendingPlacement.kind === "terrain") {
+        hintEl.textContent = "Place terrain - hills unlock special tower upgrades";
       } else {
-        hintEl.textContent = "Select a card to place, or click a tower to upgrade it";
+        hintEl.textContent = "Build more roads to extend your path";
       }
+    } else {
+      hintEl.textContent = "Select a card to place, or click a tower to upgrade it";
     }
   }
 
