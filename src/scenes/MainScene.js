@@ -160,11 +160,11 @@ export default class MainScene extends Phaser.Scene {
   handleGridClick(cell) {
     const { phase, cards } = this.gameState;
 
-    // If there's a tower on this cell and we're not in the middle of placing a card, open upgrades
+    // If there's a tower on this cell, always open upgrades (prioritize over placement)
     const towerHere = this.gameState.towers.find(
       (t) => t.col === cell.col && t.row === cell.row,
     );
-    if (towerHere && (phase !== "build" || !cards.pendingPlacement)) {
+    if (towerHere) {
       showUpgradePanel(this.gameState, towerHere);
       return;
     }
