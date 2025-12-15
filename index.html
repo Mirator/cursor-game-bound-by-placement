@@ -120,6 +120,27 @@
         opacity: 0.5;
         cursor: default;
       }
+
+      .hint-panel {
+        position: absolute;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(10, 12, 18, 0.9);
+        border: 1px solid #333a4a;
+        border-radius: 8px;
+        padding: 12px 16px;
+        pointer-events: none;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        max-width: 500px;
+        text-align: center;
+        font-size: 13px;
+        color: #f5f5f5;
+      }
+
+      .hint-panel.hidden {
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -148,6 +169,9 @@
           Tower Upgrades
         </div>
         <div class="upgrade-list" id="upgrade-list"></div>
+      </div>
+      <div id="hint-panel" class="hint-panel">
+        <div id="hint-text">Build a path from left to right using road cards</div>
       </div>
     </div>
     <script type="module" src="./src/main.js"></script>
