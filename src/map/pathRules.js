@@ -185,7 +185,7 @@ function validateSinglePath(graph) {
         return { ok: false, reason: "Road would create a fork." };
       }
     }
-    return { ok: true, reason: null, path: [] };
+    return { ok: true, reason: null, pathNodes: [] };
   }
 
   // BFS from spawn to exit
@@ -316,7 +316,9 @@ export function applyRoadPlacement(gameState, pos, roadType) {
   }
 
   const pathWorld = [];
-  for (const id of validation.pathNodes ?? []) {
+  // Handle case where pathNodes might be undefined or empty (no connection yet)
+  const pathNodes = validation.pathNodes || [];
+  for (const id of pathNodes) {
     if (id === graph.spawnId) {
       pathWorld.push({ ...spawn });
     } else if (id === graph.exitId) {

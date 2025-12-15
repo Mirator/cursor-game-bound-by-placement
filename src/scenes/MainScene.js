@@ -220,9 +220,14 @@ export default class MainScene extends Phaser.Scene {
     this.gameState.cards.pendingPlacement = null;
     hideUpgradePanel();
     this.updateHint();
-    // If we are in between waves, start the next wave now
-    if (!this.gameState.waveState.active && this.gameState.path.length >= 2) {
-      startNextWave(this.gameState);
+    
+    // After placing a card, transition to card phase if not in a wave
+    // This allows the player to select another card to continue building
+    // Note: fixedUpdate will handle drawing cards and showing the panel when phase is "card"
+    if (!this.gameState.waveState.active && this.gameState.phase === "build") {
+      // Just set phase to "card" - fixedUpdate will handle drawing cards and showing panel
+      // eslint-disable-next-line no-param-reassign
+      this.gameState.phase = "card";
     }
   }
 
