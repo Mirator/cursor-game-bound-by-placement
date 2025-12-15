@@ -1,7 +1,8 @@
 import { createInitialGrid, TILE_TYPES } from "../map/grid.js";
 import { createInitialGameState } from "../core/gameState.js";
 import { drawGrid } from "../render/gridRenderer.js";
-import { tryPlaceRoad, canPlaceTerrain } from "../map/placement.js";
+import { tryPlaceRoad, canPlaceTerrain, canPlaceTower } from "../map/placement.js";
+import { canPlaceRoad } from "../map/pathRules.js";
 import { setupWaveSystem, startNextWave, updateWaveSystem } from "../systems/waveSystem.js";
 import { setupCombatSystem, tryPlaceArrowTower, updateCombatSystem } from "../systems/combatSystem.js";
 import {
@@ -65,6 +66,21 @@ export default class MainScene extends Phaser.Scene {
       this.handleGridClick(cell);
     });
 
+    // Hover tracking
+    this.hoverCell = null;
+    this.hoverHighlight = null;
+    this.placementPreview = null;
+    this.tileTypeText = null;
+    
+    this.input.on("pointermove", (pointer) => {
+      const cell = this.pointerToCell(pointer);
+      this.updateHover(cell);
+    });
+
+    this.input.on("pointerout", () => {
+      this.updateHover(null);
+    });
+
     this.updateHud();
     this.updateHint();
 
@@ -76,6 +92,10 @@ export default class MainScene extends Phaser.Scene {
       this.cardPanelVisible = false;
       this.updateHud();
       this.updateHint();
+      // Update hover to show new preview
+      if (this.hoverCell) {
+        this.updateHover(this.hoverCell);
+      }
     });
     this.cardPanelVisible = true;
 
@@ -93,6 +113,143 @@ export default class MainScene extends Phaser.Scene {
       return null;
     }
     return { col, row };
+  }
+
+  updateHover(cell) {
+    // Check if cell changed
+    if (
+      this.hoverCell &&
+      cell &&
+      this.hoverCell.col === cell.col &&
+      this.hoverCell.row === cell.row
+    ) {
+      return; // No change
+    }
+
+    this.hoverCell = cell;
+
+    // Remove existing hover highlight
+    if (this.hoverHighlight) {
+      this.hoverHighlight.destroy();
+      this.hoverHighlight = null;
+    }
+
+    // Remove existing placement preview
+    if (this.placementPreview) {
+      this.placementPreview.destroy();
+      this.placementPreview = null;
+    }
+
+    // Remove existing tile type text
+    if (this.tileTypeText) {
+      this.tileTypeText.destroy();
+      this.tileTypeText = null;
+    }
+
+    if (!cell) return;
+
+    const x = this.gridOriginX + cell.col * CELL_SIZE + CELL_SIZE / 2;
+    const y = this.gridOriginY + cell.row * CELL_SIZE + CELL_SIZE / 2;
+    const tile = this.grid.tiles[cell.row][cell.col];
+
+    // Create hover highlight (border outline)
+    this.hoverHighlight = this.add.rectangle(x, y, CELL_SIZE, CELL_SIZE, 0x000000, 0);
+    this.hoverHighlight.setStrokeStyle(3, 0xffff00, 0.8);
+    this.hoverHighlight.setDepth(100);
+
+    // Base tile type name
+    const tileTypeNames = {
+      [TILE_TYPES.PLAIN]: "Plain",
+      [TILE_TYPES.HILL]: "Hill",
+      [TILE_TYPES.ROAD_STRAIGHT]: "Straight Road",
+      [TILE_TYPES.ROAD_TURN_SMALL]: "Small Turn",
+      [TILE_TYPES.ROAD_TURN_LONG]: "Long Turn",
+    };
+    let label = tileTypeNames[tile.type] || "Unknown";
+
+    // If we are about to place something, show the placement tile instead
+    const { phase, cards } = this.gameState;
+    if (phase === "build" && cards.pendingPlacement) {
+      if (cards.pendingPlacement.kind === "road") {
+        const pendingType =
+          cards.pendingPlacement.roadType ?? TILE_TYPES.ROAD_STRAIGHT;
+        label =
+          (tileTypeNames[pendingType] || "Road") + " (placing)";
+      } else if (cards.pendingPlacement.kind === "tower") {
+        label = "Arrow Tower (placing)";
+      } else if (cards.pendingPlacement.kind === "terrain") {
+        label = "Hill (placing)";
+      }
+    }
+
+    this.tileTypeText = this.add.text(x, y - CELL_SIZE / 2 - 15, label, {
+      fontSize: "12px",
+      color: "#ffffff",
+      backgroundColor: "#000000",
+      padding: { x: 4, y: 2 },
+    });
+    this.tileTypeText.setOrigin(0.5, 1);
+    this.tileTypeText.setDepth(101);
+
+    // Show placement preview if in build phase with pending placement
+    if (phase === "build" && cards.pendingPlacement) {
+      this.updatePlacementPreview(cell, cards.pendingPlacement, x, y);
+    }
+  }
+
+  updatePlacementPreview(cell, pendingPlacement, x, y) {
+    if (this.placementPreview) {
+      this.placementPreview.destroy();
+    }
+
+    // Check if placement is valid
+    let isValid = false;
+    let previewColor = 0x00ff00; // Green for valid
+    let previewAlpha = 0.4;
+
+    if (pendingPlacement.kind === "road") {
+      const result = canPlaceRoad(
+        this.gameState.grid,
+        this.gameState.spawn,
+        this.gameState.exit,
+        cell,
+        pendingPlacement.roadType ?? TILE_TYPES.ROAD_STRAIGHT,
+      );
+      isValid = result.ok;
+    } else if (pendingPlacement.kind === "tower") {
+      const result = canPlaceTower(this.gameState, cell);
+      isValid = result.ok;
+    } else if (pendingPlacement.kind === "terrain") {
+      const result = canPlaceTerrain(this.gameState, cell);
+      isValid = result.ok;
+    }
+
+    if (!isValid) {
+      previewColor = 0xff0000; // Red for invalid
+    }
+
+    // Determine preview tile type
+    let previewType = TILE_TYPES.PLAIN;
+    if (pendingPlacement.kind === "road") {
+      previewType = pendingPlacement.roadType ?? TILE_TYPES.ROAD_STRAIGHT;
+    } else if (pendingPlacement.kind === "terrain") {
+      previewType = pendingPlacement.terrainType ?? TILE_TYPES.HILL;
+    }
+
+    // Get color for preview
+    const COLORS = {
+      [TILE_TYPES.PLAIN]: 0x252b3b,
+      [TILE_TYPES.HILL]: 0x4a5a3f,
+      [TILE_TYPES.ROAD_STRAIGHT]: 0x5a5a5a,
+      [TILE_TYPES.ROAD_TURN_SMALL]: 0x6a6a5a,
+      [TILE_TYPES.ROAD_TURN_LONG]: 0x7a7a5a,
+    };
+    const baseColor = COLORS[previewType] ?? COLORS[TILE_TYPES.PLAIN];
+
+    // Create semi-transparent preview rectangle
+    this.placementPreview = this.add.rectangle(x, y, CELL_SIZE, CELL_SIZE, baseColor, previewAlpha);
+    this.placementPreview.setStrokeStyle(2, previewColor, 0.8);
+    this.placementPreview.setDepth(99);
   }
 
   update(time, delta) {
@@ -122,6 +279,10 @@ export default class MainScene extends Phaser.Scene {
         this.cardPanelVisible = false;
         this.updateHud();
         this.updateHint();
+        // Update hover to show new preview
+        if (this.hoverCell) {
+          this.updateHover(this.hoverCell);
+        }
       });
       this.cardPanelVisible = true;
     } else if (this.gameState.phase !== "card" && this.cardPanelVisible) {
@@ -220,6 +381,11 @@ export default class MainScene extends Phaser.Scene {
     this.gameState.cards.pendingPlacement = null;
     hideUpgradePanel();
     this.updateHint();
+    
+    // Update hover to remove preview
+    if (this.hoverCell) {
+      this.updateHover(this.hoverCell);
+    }
     
     // After placing a card, transition to card phase if not in a wave
     // This allows the player to select another card to continue building

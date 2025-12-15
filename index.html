@@ -71,7 +71,7 @@
       }
 
       .card-button {
-        min-width: 120px;
+        min-width: 140px;
         padding: 8px 10px;
         border-radius: 6px;
         border: 1px solid #3c4258;
@@ -81,6 +81,9 @@
         text-align: left;
         transition: background 120ms ease, transform 80ms ease,
           box-shadow 120ms ease;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
       }
 
       .card-button:hover {
@@ -97,6 +100,140 @@
       .card-desc {
         font-size: 12px;
         opacity: 0.8;
+      }
+
+      .card-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 4px;
+        background: #151820;
+        border: 1px solid #3c4258;
+        margin-bottom: 4px;
+        position: relative;
+        box-sizing: border-box;
+      }
+
+      /* Simple mini-tiles: use inner pseudo \"road\" shapes */
+      .card-icon-road-straight::after {
+        content: "";
+        position: absolute;
+        left: 6px;
+        right: 6px;
+        top: 50%;
+        height: 6px;
+        transform: translateY(-50%);
+        background: #cccccc;
+        border-radius: 3px;
+      }
+
+      /* Small Turn: Show all 4 possible orientations in corners */
+      .card-icon-road-turn-small::before {
+        content: "";
+        position: absolute;
+        /* Top-left: up-right turn */
+        top: 4px;
+        left: 4px;
+        width: 12px;
+        height: 4px;
+        background: #cccccc;
+        border-radius: 2px 0 0 2px;
+        box-shadow: 
+          /* Vertical part */
+          0 8px 0 0 #cccccc,
+          /* Top-right: right-down turn */
+          16px -8px 0 0 #cccccc,
+          16px -4px 0 0 #cccccc,
+          /* Bottom-right: down-left turn */
+          16px 8px 0 0 #cccccc,
+          12px 8px 0 0 #cccccc,
+          /* Bottom-left: left-up turn */
+          0 8px 0 0 #cccccc,
+          4px 8px 0 0 #cccccc,
+          4px 4px 0 0 #cccccc;
+      }
+
+      .card-icon-road-turn-small::after {
+        content: "";
+        position: absolute;
+        /* Complete the visual representation */
+        top: 50%;
+        left: 50%;
+        width: 2px;
+        height: 2px;
+        background: #cccccc;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        box-shadow: 
+          /* Additional turn indicators */
+          -6px -6px 0 0 #cccccc,
+          6px 6px 0 0 #cccccc,
+          -6px 6px 0 0 #cccccc,
+          6px -6px 0 0 #cccccc;
+      }
+
+      /* Long Turn: Show all 4 possible orientations with longer paths */
+      .card-icon-road-turn-long::before {
+        content: "";
+        position: absolute;
+        /* Top-left: up-right turn (longer) */
+        top: 3px;
+        left: 3px;
+        width: 14px;
+        height: 4px;
+        background: #d0d0d0;
+        border-radius: 2px 0 0 2px;
+        box-shadow: 
+          /* Vertical part (longer) */
+          0 10px 0 0 #d0d0d0,
+          /* Top-right: right-down turn (longer) */
+          18px -10px 0 0 #d0d0d0,
+          18px -6px 0 0 #d0d0d0,
+          18px -2px 0 0 #d0d0d0,
+          /* Bottom-right: down-left turn (longer) */
+          18px 10px 0 0 #d0d0d0,
+          14px 10px 0 0 #d0d0d0,
+          10px 10px 0 0 #d0d0d0,
+          /* Bottom-left: left-up turn (longer) */
+          0 10px 0 0 #d0d0d0,
+          4px 10px 0 0 #d0d0d0,
+          4px 6px 0 0 #d0d0d0,
+          4px 2px 0 0 #d0d0d0;
+      }
+
+      .card-icon-road-turn-long::after {
+        content: "";
+        position: absolute;
+        /* Complete the visual representation */
+        top: 50%;
+        left: 50%;
+        width: 2px;
+        height: 2px;
+        background: #d0d0d0;
+        transform: translate(-50%, -50%);
+        border-radius: 50%;
+        box-shadow: 
+          /* Additional turn indicators (longer paths) */
+          -7px -7px 0 0 #d0d0d0,
+          7px 7px 0 0 #d0d0d0,
+          -7px 7px 0 0 #d0d0d0,
+          7px -7px 0 0 #d0d0d0;
+      }
+
+      .card-icon-terrain-hill {
+        background: radial-gradient(circle at 30% 30%, #9ac66a, #4a5a3f);
+      }
+
+      .card-icon-tower-arrow::after {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 0;
+        height: 0;
+        border-left: 6px solid transparent;
+        border-right: 6px solid transparent;
+        border-bottom: 10px solid #f5f5f5;
+        transform: translate(-50%, -50%);
       }
 
       .upgrade-list {
