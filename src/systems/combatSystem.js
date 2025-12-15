@@ -3,6 +3,7 @@ import Projectile from "../entities/projectile.js";
 import { canPlaceTower } from "../map/placement.js";
 
 const PROJECTILE_SPEED_CELLS = 6;
+const BLEED_DURATION = 2.5;
 
 export function setupCombatSystem(gameState) {
   // eslint-disable-next-line no-param-reassign
@@ -40,12 +41,40 @@ function distanceGrid(aX, aY, bX, bY) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+function isEnemyOnTurn(enemy, path) {
+  if (!path || path.length < 3) return false;
+  if (enemy.pathIndex <= 0 || enemy.pathIndex >= path.length - 1) return false;
+  const prev = path[enemy.pathIndex - 1];
+  const cur = path[enemy.pathIndex];
+  const next = path[enemy.pathIndex + 1];
+  const dx1 = cur.col - prev.col;
+  const dy1 = cur.row - prev.row;
+  const dx2 = next.col - cur.col;
+  const dy2 = next.row - cur.row;
+  return dx1 !== dx2 || dy1 !== dy2;
+}
+
 function spawnProjectile(gameState, tower, targetEnemy) {
   const id = gameState.nextProjectileId;
   // eslint-disable-next-line no-param-reassign
   gameState.nextProjectileId += 1;
 
-  const projectile = new Projectile(id, tower.col + 0.5, tower.row + 0.5, targetEnemy.id, tower.damage, PROJECTILE_SPEED_CELLS);
+  const baseDamage = tower.damage + (tower.rampStacks ?? 0);
+  const projectile = new Projectile(
+    id,
+    tower.col + 0.5,
+    tower.row + 0.5,
+    targetEnemy.id,
+    baseDamage,
+    PROJECTILE_SPEED_CELLS,
+    tower.id,
+  );
+
+  projectile.critChance = tower.critChance ?? 0;
+  projectile.headshotChance = tower.headshotChance ?? 0;
+  projectile.turnBonusDamage = tower.turnBonusDamage ?? 0;
+  projectile.slowMultiplier = tower.slowOnHit ?? 1;
+  projectile.bleedDamage = tower.bleedDamage ?? 0;
 
   if (tower.pierce) {
     projectile.pierceRemaining = tower.pierce;
@@ -93,6 +122,11 @@ function updateProjectiles(gameState, dt) {
     enemiesById.set(enemy.id, enemy);
   }
 
+  const towersById = new Map();
+  for (const tower of gameState.towers) {
+    towersById.set(tower.id, tower);
+  }
+
   const remaining = [];
 
   for (const projectile of gameState.projectiles) {
@@ -109,7 +143,32 @@ function updateProjectiles(gameState, dt) {
 
     if (dist < 0.1) {
       // hit
-      target.hp -= projectile.damage;
+      const sourceTower = towersById.get(projectile.sourceTowerId);
+      let totalDamage = projectile.damage;
+      if (projectile.turnBonusDamage && isEnemyOnTurn(target, gameState.path)) {
+        totalDamage += projectile.turnBonusDamage;
+      }
+
+      let multiplier = 1;
+      if (projectile.headshotChance && Math.random() < projectile.headshotChance) {
+        multiplier *= 3;
+      } else if (projectile.critChance && Math.random() < projectile.critChance) {
+        multiplier *= 2;
+      }
+
+      target.hp -= totalDamage * multiplier;
+      if (projectile.slowMultiplier && projectile.slowMultiplier < target.speedMultiplier) {
+        target.speedMultiplier = projectile.slowMultiplier;
+      }
+      if (projectile.bleedDamage > 0) {
+        target.bleedDamagePerSecond += projectile.bleedDamage;
+        target.bleedDuration = Math.max(target.bleedDuration, BLEED_DURATION);
+      }
+      if (sourceTower?.rampPerHit) {
+        const nextRamp = (sourceTower.rampStacks ?? 0) + sourceTower.rampPerHit;
+        // eslint-disable-next-line no-param-reassign
+        sourceTower.rampStacks = Math.min(nextRamp, 3);
+      }
 
       if (projectile.pierceRemaining && projectile.pierceRemaining > 1) {
         projectile.pierceRemaining -= 1;
