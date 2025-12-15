@@ -1,30 +1,105 @@
-import { TILE_TYPES } from "./grid.js";
+import { createInitialGrid, TILE_TYPES } from "./grid.js";
+
+const DIRS = {
+  right: { dx: 1, dy: 0, opposite: "left" },
+  left: { dx: -1, dy: 0, opposite: "right" },
+  down: { dx: 0, dy: 1, opposite: "up" },
+  up: { dx: 0, dy: -1, opposite: "down" },
+};
+
+const ORIENTATION_SETS = {
+  [TILE_TYPES.ROAD_STRAIGHT]: [
+    ["left", "right"],
+    ["up", "down"],
+  ],
+  [TILE_TYPES.ROAD_TURN_SMALL]: [
+    ["up", "right"],
+    ["right", "down"],
+    ["down", "left"],
+    ["left", "up"],
+  ],
+  [TILE_TYPES.ROAD_TURN_LONG]: [
+    ["up", "right"],
+    ["right", "down"],
+    ["down", "left"],
+    ["left", "up"],
+  ],
+};
+
+function pickOrientationForTile(type, neighborDirs) {
+  const options = ORIENTATION_SETS[type];
+  if (!options) return null;
+  if (neighborDirs.length === 0) return null; // avoid isolated/open roads
+  for (const opt of options) {
+    if (neighborDirs.every((dir) => opt.includes(dir))) {
+      return { entryDir: opt[0], exitDir: opt[1] };
+    }
+  }
+  return null;
+}
 
 function key(col, row) {
   return `${col},${row}`;
 }
 
-function neighborsOf(col, row, grid) {
-  const out = [];
-  const deltas = [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ];
-  for (const [dx, dy] of deltas) {
-    const nx = col + dx;
-    const ny = row + dy;
-    if (nx >= 0 && ny >= 0 && nx < grid.cols && ny < grid.rows) {
-      out.push({ col: nx, row: ny });
+function recomputeRoadDirections(grid, spawn, exit) {
+  for (let row = 0; row < grid.rows; row += 1) {
+    for (let col = 0; col < grid.cols; col += 1) {
+      const tile = grid.tiles[row][col];
+      if (
+        tile.type !== TILE_TYPES.ROAD_STRAIGHT &&
+        tile.type !== TILE_TYPES.ROAD_TURN_SMALL &&
+        tile.type !== TILE_TYPES.ROAD_TURN_LONG
+      ) {
+        // eslint-disable-next-line no-param-reassign
+        tile.entryDir = null;
+        // eslint-disable-next-line no-param-reassign
+        tile.exitDir = null;
+        continue;
+      }
+
+      const neighborDirs = [];
+      for (const [dirName, dir] of Object.entries(DIRS)) {
+        const nx = col + dir.dx;
+        const ny = row + dir.dy;
+        const inBounds = nx >= 0 && ny >= 0 && nx < grid.cols && ny < grid.rows;
+        if (inBounds) {
+          const ntile = grid.tiles[ny][nx];
+          if (
+            ntile.type === TILE_TYPES.ROAD_STRAIGHT ||
+            ntile.type === TILE_TYPES.ROAD_TURN_SMALL ||
+            ntile.type === TILE_TYPES.ROAD_TURN_LONG
+          ) {
+            neighborDirs.push(dirName);
+          }
+        }
+        if (spawn.col === nx && spawn.row === ny) neighborDirs.push(dirName);
+        if (exit.col === nx && exit.row === ny) neighborDirs.push(dirName);
+      }
+
+      const orientation = pickOrientationForTile(tile.type, neighborDirs);
+      if (!orientation) {
+        return {
+          ok: false,
+          reason: "Road orientation does not match its neighbors.",
+        };
+      }
+
+      // eslint-disable-next-line no-param-reassign
+      tile.entryDir = orientation.entryDir;
+      // eslint-disable-next-line no-param-reassign
+      tile.exitDir = orientation.exitDir;
     }
   }
-  return out;
+
+  return { ok: true };
 }
 
 function buildGraph(grid, spawn, exit) {
   const nodes = new Set();
   const edges = new Map(); // id -> Set of neighbor ids
+  const spawnId = "S";
+  const exitId = "E";
 
   const addNode = (id) => {
     if (!nodes.has(id)) {
@@ -40,6 +115,42 @@ function buildGraph(grid, spawn, exit) {
     edges.get(idB).add(idA);
   };
 
+  const connectIfAligned = (col, row, dirName, sourceId) => {
+    const dir = DIRS[dirName];
+    const nx = col + dir.dx;
+    const ny = row + dir.dy;
+    const neighborIsSpawn = nx === spawn.col && ny === spawn.row;
+    const neighborIsExit = nx === exit.col && ny === exit.row;
+    if (neighborIsSpawn) {
+      addEdge(sourceId, spawnId);
+      return;
+    }
+    if (neighborIsExit) {
+      addEdge(sourceId, exitId);
+      return;
+    }
+
+    if (nx < 0 || ny < 0 || nx >= grid.cols || ny >= grid.rows) return;
+    const neighbor = grid.tiles[ny][nx];
+    if (
+      neighbor.type !== TILE_TYPES.ROAD_STRAIGHT &&
+      neighbor.type !== TILE_TYPES.ROAD_TURN_SMALL &&
+      neighbor.type !== TILE_TYPES.ROAD_TURN_LONG
+    ) {
+      return;
+    }
+
+    if (!neighbor.entryDir || !neighbor.exitDir) return;
+    if (
+      neighbor.entryDir !== dir.opposite &&
+      neighbor.exitDir !== dir.opposite
+    ) {
+      return;
+    }
+
+    addEdge(sourceId, key(nx, ny));
+  };
+
   // Add road tiles as nodes and connect adjacent road tiles
   for (let row = 0; row < grid.rows; row += 1) {
     for (let col = 0; col < grid.cols; col += 1) {
@@ -51,46 +162,13 @@ function buildGraph(grid, spawn, exit) {
       ) {
         const id = key(col, row);
         addNode(id);
-        const neighs = neighborsOf(col, row, grid);
-        for (const n of neighs) {
-          const ntile = grid.tiles[n.row][n.col];
-          if (
-            ntile.type === TILE_TYPES.ROAD_STRAIGHT ||
-            ntile.type === TILE_TYPES.ROAD_TURN_SMALL ||
-            ntile.type === TILE_TYPES.ROAD_TURN_LONG
-          ) {
-            addEdge(id, key(n.col, n.row));
-          }
+        if (tile.entryDir) {
+          connectIfAligned(col, row, tile.entryDir, id);
+        }
+        if (tile.exitDir) {
+          connectIfAligned(col, row, tile.exitDir, id);
         }
       }
-    }
-  }
-
-  const spawnId = "S";
-  const exitId = "E";
-
-  // Connect spawn / exit if adjacent to a road tile
-  const sNeighbors = neighborsOf(spawn.col, spawn.row, grid);
-  for (const n of sNeighbors) {
-    const tile = grid.tiles[n.row][n.col];
-    if (
-      tile.type === TILE_TYPES.ROAD_STRAIGHT ||
-      tile.type === TILE_TYPES.ROAD_TURN_SMALL ||
-      tile.type === TILE_TYPES.ROAD_TURN_LONG
-    ) {
-      addEdge(spawnId, key(n.col, n.row));
-    }
-  }
-
-  const eNeighbors = neighborsOf(exit.col, exit.row, grid);
-  for (const n of eNeighbors) {
-    const tile = grid.tiles[n.row][n.col];
-    if (
-      tile.type === TILE_TYPES.ROAD_STRAIGHT ||
-      tile.type === TILE_TYPES.ROAD_TURN_SMALL ||
-      tile.type === TILE_TYPES.ROAD_TURN_LONG
-    ) {
-      addEdge(exitId, key(n.col, n.row));
     }
   }
 
@@ -176,17 +254,48 @@ export function canPlaceRoad(grid, spawn, exit, pos, roadType) {
     return { ok: false, reason: "Road must be placed on plain terrain." };
   }
 
-  // Temporarily mutate, build graph, then revert
-  const originalType = tile.type;
+  // Temporarily mutate, rebuild directions, build graph, then revert
+  const backup = grid.tiles.map((row) =>
+    row.map((cell) => ({
+      type: cell.type,
+      entryDir: cell.entryDir,
+      exitDir: cell.exitDir,
+    })),
+  );
+
   // eslint-disable-next-line no-param-reassign
   grid.tiles[pos.row][pos.col].type = roadType;
+
+  const orientationResult = recomputeRoadDirections(grid, spawn, exit);
+  if (!orientationResult.ok) {
+    // revert everything
+    for (let r = 0; r < grid.rows; r += 1) {
+      for (let c = 0; c < grid.cols; c += 1) {
+        // eslint-disable-next-line no-param-reassign
+        grid.tiles[r][c].type = backup[r][c].type;
+        // eslint-disable-next-line no-param-reassign
+        grid.tiles[r][c].entryDir = backup[r][c].entryDir;
+        // eslint-disable-next-line no-param-reassign
+        grid.tiles[r][c].exitDir = backup[r][c].exitDir;
+      }
+    }
+    return { ok: false, reason: orientationResult.reason };
+  }
 
   const graph = buildGraph(grid, spawn, exit);
   const validation = validateSinglePath(graph);
 
   // revert
-  // eslint-disable-next-line no-param-reassign
-  grid.tiles[pos.row][pos.col].type = originalType;
+  for (let r = 0; r < grid.rows; r += 1) {
+    for (let c = 0; c < grid.cols; c += 1) {
+      // eslint-disable-next-line no-param-reassign
+      grid.tiles[r][c].type = backup[r][c].type;
+      // eslint-disable-next-line no-param-reassign
+      grid.tiles[r][c].entryDir = backup[r][c].entryDir;
+      // eslint-disable-next-line no-param-reassign
+      grid.tiles[r][c].exitDir = backup[r][c].exitDir;
+    }
+  }
 
   return validation;
 }
@@ -196,6 +305,10 @@ export function applyRoadPlacement(gameState, pos, roadType) {
   // apply
   // eslint-disable-next-line no-param-reassign
   grid.tiles[pos.row][pos.col].type = roadType;
+  const orientationResult = recomputeRoadDirections(grid, spawn, exit);
+  if (!orientationResult.ok) {
+    throw new Error(orientationResult.reason || "Invalid road placement");
+  }
   const graph = buildGraph(grid, spawn, exit);
   const validation = validateSinglePath(graph);
   if (!validation.ok) {
@@ -218,6 +331,24 @@ export function applyRoadPlacement(gameState, pos, roadType) {
 
   // eslint-disable-next-line no-param-reassign
   gameState.path = pathWorld;
+}
+
+export function logPathRuleSanityChecks() {
+  const grid = createInitialGrid(3, 3);
+  const spawn = { col: 0, row: 1 };
+  const exit = { col: 2, row: 1 };
+
+  const straightResult = canPlaceRoad(grid, spawn, exit, { col: 1, row: 1 }, TILE_TYPES.ROAD_STRAIGHT);
+  // eslint-disable-next-line no-console
+  console.log("PathRules straight check (should be ok):", straightResult);
+
+  const turnResult = canPlaceRoad(grid, spawn, exit, { col: 1, row: 1 }, TILE_TYPES.ROAD_TURN_SMALL);
+  // eslint-disable-next-line no-console
+  console.log("PathRules turn check (should fail):", turnResult);
+}
+
+if (typeof window !== "undefined" && window.DEBUG_PATH_RULES) {
+  logPathRuleSanityChecks();
 }
 
 

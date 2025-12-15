@@ -71,7 +71,21 @@ function updateEnemies(gameState, dt) {
   const remainingEnemies = [];
 
   for (const enemy of gameState.enemies) {
-    let distanceToTravel = enemy.speed * dt;
+    if (enemy.bleedDuration > 0) {
+      enemy.hp -= enemy.bleedDamagePerSecond * dt;
+      enemy.bleedDuration -= dt;
+      if (enemy.bleedDuration <= 0) {
+        enemy.bleedDuration = 0;
+        enemy.bleedDamagePerSecond = 0;
+      }
+    }
+
+    if (enemy.hp <= 0) {
+      addGold(gameState, GOLD_PER_KILL);
+      continue;
+    }
+
+    let distanceToTravel = enemy.speed * enemy.speedMultiplier * dt;
 
     while (distanceToTravel > 0 && enemy.pathIndex < path.length - 1) {
       const a = path[enemy.pathIndex];
